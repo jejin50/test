@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>시각적 뽀모도로 타이머</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & Outfit & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Gaegu:wght@700&family=Noto+Sans+KR:wght@400;600;700;900&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+  <!-- Tone.js CDN for reliable sound synthesis -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+  <style>
+    :root {
+      --chalkboard-dark: #121c17;
+      --chalkboard-green: #1a2a23;
+      --chalkboard-border: #2c4238;
+      --chalk-white: #f5f8f5;
+    }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: var(--chalkboard-dark);
+      background-image: 
+        radial-gradient(ellipse at 50% 20%, rgba(35, 62, 50, 0.45) 0%, transparent 70%),
+        radial-gradient(circle at 80% 80%, rgba(20, 36, 29, 0.6) 0%, transparent 60%),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 1px, transparent 1px, transparent 24px),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 1px, transparent 1px, transparent 24px);
+      min-height: 100vh;
+      color: var(--chalk-white);
+      overflow-x: hidden;
+      user-select: none;
+    }
+
+    /* Chalkboard texture subtle dust overlay */
+    .chalk-texture {
+      box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.65), 0 20px 45px rgba(0,0,0,0.5);
+    }
+
+    .time-font {
+      font-family: 'Outfit', 'Chakra Petch', sans-serif;
+      font-feature-settings: "tnum";
+      font-variant-numeric: tabular-nums;
+    }
+
+    .handwriting {
+      font-family: 'Gaegu', cursive;
+    }
+
+    /* Glow filter and animations */
+    .glow-effect {
+      filter: drop-shadow(0 0 25px rgba(255, 94, 98, 0.65)) drop-shadow(0 0 50px rgba(255, 153, 102, 0.4));
+      transition: filter 0.5s ease;
+    }
+
+    .glow-aurora {
+      filter: drop-shadow(0 0 25px rgba(0, 242, 254, 0.65)) drop-shadow(0 0 55px rgba(79, 172, 254, 0.45));
+    }
+
+    .glow-cyber {
+      filter: drop-shadow(0 0 28px rgba(255, 0, 128, 0.7)) drop-shadow(0 0 50px rgba(121, 40, 202, 0.5));
+    }
+
+    .glow-emerald {
+      filter: drop-shadow(0 0 25px rgba(52, 211, 153, 0.75)) drop-shadow(0 0 55px rgba(16, 185, 129, 0.45));
+    }
+
+    /* Glass pill buttons */
+    .glass-btn {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .glass-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.35);
+      transform: translateY(-2px);
+    }
+
+    .glass-btn:active {
+      transform: translateY(1px) scale(0.98);
+    }
+
+    /* Dial tick indicators */
+    .dial-tick {
+      transform-origin: center;
+    }
+
+    /* Custom Toast notification */
+    #toast {
+      transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.35s ease;
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen items-center justify-between p-4 md:p-8">
+
+  <div class="w-full max-w-2xl flex flex-col items-center">
+    
+    <!-- Top Bar: Chalk Title & Session Stats -->
+    <header class="w-full flex items-center justify-between py-2 px-4 mb-3 border-b border-emerald-900/50">
+      <div class="flex items-center space-x-3">
+        <span class="text-3xl filter drop-shadow">🍅</span>
+        <div>
+          <h1 class="text-xl md:text-2xl font-black tracking-wider text-emerald-100 flex items-center gap-2">
+            시각적 뽀모도로
+            <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-normal border border-emerald-500/30">Chalkboard Edition</span>
+          </h1>
+          <p class="text-xs text-emerald-300/60 handwriting tracking-wide text-sm">시간이 한눈에 보이는 생생한 디스크 타이머</p>
+        </div>
+      </div>
+
+      <!-- Sound & Settings Quick Controls -->
+      <div class="flex items-center space-x-2">
+        <!-- 분침 표시판 모드 전환 버튼 -->
+        <button id="dialModeBtn" class="p-2.5 rounded-xl glass-btn text-emerald-200 text-sm flex items-center gap-1.5 focus:outline-none" title="분침 표시판 모드 (타이머 잔여 분 연동 / 현재 시각 분침)">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke-width="2"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 12l0-7"/>
+            <circle cx="12" cy="12" r="2" fill="currentColor"/>
+          </svg>
+          <span id="dialModeLabel" class="text-xs hidden sm:inline font-bold">분침: 타이머</span>
+        </button>
+
+        <button id="soundToggleBtn" class="p-2.5 rounded-xl glass-btn text-emerald-200 text-sm flex items-center gap-1.5 focus:outline-none" title="사운드 켜기/끄기">
+          <svg id="soundIconOn" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+          <svg id="soundIconOff" class="w-5 h-5 hidden text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+          </svg>
+        </button>
+
+        <button id="settingsBtn" class="p-2.5 rounded-xl glass-btn text-emerald-200 text-sm focus:outline-none" title="설정">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="flex items-center justify-center p-1.5 bg-[#15251f]/90 border border-emerald-600/30 rounded-2xl w-full max-w-md shadow-lg my-2">
+      <button data-mode="pomodoro" class="mode-tab flex-1 py-2 px-3 rounded-xl text-sm font-bold transition-all text-white bg-emerald-600/60 shadow">
+        집중 (25분)
+      </button>
+      <button data-mode="shortBreak" class="mode-tab flex-1 py-2 px-3 rounded-xl text-sm font-bold transition-all text-emerald-200/70 hover:text-white">
+        짧은 휴식 (5분)
+      </button>
+      <button data-mode="longBreak" class="mode-tab flex-1 py-2 px-3 rounded-xl text-sm font-bold transition-all text-emerald-200/70 hover:text-white">
+        긴 휴식 (15분)
+      </button>
+    </div>
+
+    <main class="w-full bg-[#182922] border-4 border-[#2b4137] rounded-3xl p-6 md:p-8 mt-3 relative chalk-texture flex flex-col items-center">
+      
+      <!-- Chalk texture dust decorations -->
+      <div class="absolute top-4 left-6 text-xs text-white/20 handwriting pointer-events-none select-none">
+        ✎ 오늘 완료: <span id="completedCountText" class="text-emerald-300 font-bold text-base">0</span>회
+      </div>
+      <div class="absolute top-4 right-6 flex items-center gap-1.5 pointer-events-none">
+        <span id="tomatoIcons" class="text-sm tracking-tighter">🍅⚪⚪⚪</span>
+      </div>
+
+      <!-- Color Themes Bar -->
+      <div class="flex items-center gap-2 mb-4 mt-2">
+        <span class="text-xs text-emerald-300/80 font-medium mr-1">테마:</span>
+        <button data-theme="sunset" class="theme-btn w-6 h-6 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-red-500 ring-2 ring-white ring-offset-2 ring-offset-[#182922] transition-transform scale-110" title="노을 선셋"></button>
+        <button data-theme="aurora" class="theme-btn w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-400 via-teal-400 to-blue-500 hover:opacity-90 transition-transform" title="오로라 쿨"></button>
+        <button data-theme="cyber" class="theme-btn w-6 h-6 rounded-full bg-gradient-to-tr from-fuchsia-500 via-purple-500 to-indigo-500 hover:opacity-90 transition-transform" title="사이버 펑크"></button>
+        <button data-theme="emerald" class="theme-btn w-6 h-6 rounded-full bg-gradient-to-tr from-emerald-400 via-green-400 to-lime-400 hover:opacity-90 transition-transform" title="에메랄드 숲"></button>
+      </div>
+
+      <!-- SVG Visual Timer Dial -->
+      <div class="relative w-[300px] h-[300px] sm:w-[360px] sm:h-[360px] flex items-center justify-center my-2">
+        
+        <!-- SVG Graphic Container -->
+        <svg id="timerSvg" class="w-full h-full transform -rotate-90" viewBox="0 0 400 400">
+          <defs>
+            <!-- Sunset Theme Gradient -->
+            <radialGradient id="grad-sunset" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ff7e5f" />
+              <stop offset="55%" stop-color="#feb47b" />
+              <stop offset="90%" stop-color="#ff2a6d" />
+              <stop offset="100%" stop-color="#ff0055" />
+            </radialGradient>
+
+            <!-- Aurora Theme Gradient -->
+            <radialGradient id="grad-aurora" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#00f2fe" />
+              <stop offset="60%" stop-color="#4facfe" />
+              <stop offset="90%" stop-color="#00c6ff" />
+              <stop offset="100%" stop-color="#0072ff" />
+            </radialGradient>
+
+            <!-- Cyber Theme Gradient -->
+            <radialGradient id="grad-cyber" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ff007f" />
+              <stop offset="50%" stop-color="#7928ca" />
+              <stop offset="85%" stop-color="#4338ca" />
+              <stop offset="100%" stop-color="#2e0854" />
+            </radialGradient>
+
+            <!-- Emerald Theme Gradient -->
+            <radialGradient id="grad-emerald" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#6ee7b7" />
+              <stop offset="50%" stop-color="#10b981" />
+              <stop offset="85%" stop-color="#059669" />
+              <stop offset="100%" stop-color="#064e3b" />
+            </radialGradient>
+
+            <!-- Inner Subtle Dial Ring Glow -->
+            <filter id="dialShadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.6"/>
+            </filter>
+          </defs>
+
+          <!-- Outer Chalk Ring Background -->
+          <circle cx="200" cy="200" r="186" fill="#132019" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+          
+          <!-- Outer 60-Minute Dial Tick Marks (Like classic Time Timer) -->
+          <g id="dialTicks" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"></g>
+
+          <!-- Visual Timer Colored Pie / Wedge Path -->
+          <path id="timerWedge" d="" fill="url(#grad-sunset)" class="glow-effect transition-all duration-200 ease-linear" opacity="0.95" />
+
+          <!-- Clock Dial Numbers (시계 숫자 및 분 인덱스 표시판) -->
+          <g id="dialNumbers" class="select-none font-bold" style="text-anchor: middle; dominant-baseline: central;"></g>
+
+          <!-- Dial Center Decorative Disc for High Contrast -->
+          <circle cx="200" cy="200" r="110" fill="#15241d" stroke="rgba(255,255,255,0.22)" stroke-width="2.5" filter="url(#dialShadow)" />
+          
+          <!-- Center Pulse Ring when running -->
+          <circle id="pulseRing" cx="200" cy="200" r="115" fill="none" stroke="rgba(255, 255, 255, 0.4)" stroke-width="1.5" opacity="0" class="transition-opacity duration-300" />
+
+          <!-- 분침 바늘 표시판 레이어 (Minute Hand Display) -->
+          <g id="clockHandsGroup" style="pointer-events: none;">
+            <!-- 보조 기준선 (분침 가이드) -->
+            <circle cx="200" cy="200" r="172" fill="none" stroke="rgba(255,255,255,0.1)" stroke-dasharray="3 3" />
+
+            <!-- 메인 정밀 분침 (Precision Minute Hand) -->
+            <g id="minuteHandWrapper" class="transition-transform duration-200" style="transform-origin: 200px 200px;">
+              <!-- 분침 꼬리 균형추 -->
+              <line x1="200" y1="200" x2="200" y2="224" stroke="#f43f5e" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+              <!-- 분침 메인 바늘 -->
+              <line x1="200" y1="200" x2="200" y2="35" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" filter="drop-shadow(0 0 6px rgba(255,255,255,0.85))"/>
+              <!-- 분침 발광 팁 포인트 -->
+              <line x1="200" y1="58" x2="200" y2="33" stroke="#f43f5e" stroke-width="5" stroke-linecap="round" filter="drop-shadow(0 0 8px rgba(244,63,94,0.9))"/>
+              <polygon points="200,24 195,36 205,36" fill="#f43f5e" />
+            </g>
+
+            <!-- 중앙 피벗 캡 (Center Pivot) -->
+            <circle cx="200" cy="200" r="9" fill="#f59e0b" stroke="#ffffff" stroke-width="2.5" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.5))" />
+            <circle cx="200" cy="200" r="3.5" fill="#15241d" />
+          </g>
+        </svg>
+
+        <div class="absolute flex flex-col items-center justify-center text-center pointer-events-none z-10">
+          <span id="modeLabel" class="text-xs tracking-widest uppercase font-extrabold text-amber-300 drop-shadow mb-1">
+            집중 시간
+          </span>
+          <div id="timeDisplay" class="time-font text-5xl sm:text-6xl font-black tracking-tight text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.9)]">
+            25:00
+          </div>
+          <span id="percentDisplay" class="text-xs font-semibold text-emerald-200/90 mt-1 px-2.5 py-0.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/10">
+            남음: 100%
+          </span>
+        </div>
+      </div>
+
+      <div class="w-full max-w-md flex flex-col items-center gap-4 mt-3">
+        <!-- Main Controls -->
+        <div class="flex items-center justify-center gap-4 w-full">
+          <!-- Reset Button -->
+          <button id="resetBtn" class="glass-btn p-3.5 rounded-2xl text-emerald-100 hover:text-white flex items-center justify-center transition-all" title="초기화">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+
+          <!-- Play / Pause Button -->
+          <button id="startBtn" class="flex-1 py-4 px-6 rounded-2xl font-black text-xl shadow-xl flex items-center justify-center gap-2.5 transition-all transform active:scale-95 bg-gradient-to-r from-amber-400 via-rose-500 to-red-500 text-white hover:brightness-110">
+            <svg id="playIcon" class="w-7 h-7 fill-current" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <svg id="pauseIcon" class="w-7 h-7 fill-current hidden" viewBox="0 0 24 24">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+            <span id="startBtnText">집중 시작</span>
+          </button>
+
+          <!-- Skip / Next Step Button -->
+          <button id="skipBtn" class="glass-btn p-3.5 rounded-2xl text-emerald-100 hover:text-white flex items-center justify-center transition-all" title="다음 단계로 넘어가기">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Quick Minute Adjusters -->
+        <div class="flex items-center justify-center gap-2 w-full">
+          <button id="add1MinBtn" class="glass-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-emerald-100 hover:border-emerald-400">
+            +1분
+          </button>
+          <button id="add5MinBtn" class="glass-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-emerald-100 hover:border-emerald-400">
+            +5분
+          </button>
+          <button id="sub5MinBtn" class="glass-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-emerald-100 hover:border-emerald-400">
+            -5분
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="w-full mt-4 flex items-center justify-between px-2 text-xs text-emerald-300/60 handwriting">
+      <span>💡 팁: 시각적 디스크는 남은 시간을 시계 방향으로 직관적으로 보여줍니다.</span>
+      <span id="sessionStreakText">오늘 연속 집중 0회 달성!</span>
+    </footer>
+  </div>
+
+  <div id="settingsModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden opacity-0 transition-opacity duration-300">
+    <div class="bg-[#1a2d24] border-2 border-emerald-500/40 rounded-3xl p-6 w-full max-w-sm shadow-2xl text-emerald-50 transform scale-95 transition-transform duration-300">
+      <div class="flex items-center justify-between pb-3 border-b border-emerald-700/50 mb-4">
+        <h3 class="text-lg font-bold flex items-center gap-2">
+          <span>⚙️</span> 타이머 시간 설정
+        </h3>
+        <button id="closeModalBtn" class="text-emerald-300 hover:text-white text-2xl font-bold leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-emerald-200 mb-1">집중 시간 (분)</label>
+          <input type="number" id="inputPomodoro" min="1" max="60" value="25" class="w-full bg-[#121e18] border border-emerald-600/40 rounded-xl px-3 py-2 text-white font-bold focus:ring-2 focus:ring-emerald-400 outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-emerald-200 mb-1">짧은 휴식 시간 (분)</label>
+          <input type="number" id="inputShortBreak" min="1" max="30" value="5" class="w-full bg-[#121e18] border border-emerald-600/40 rounded-xl px-3 py-2 text-white font-bold focus:ring-2 focus:ring-emerald-400 outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-emerald-200 mb-1">긴 휴식 시간 (분)</label>
+          <input type="number" id="inputLongBreak" min="1" max="60" value="15" class="w-full bg-[#121e18] border border-emerald-600/40 rounded-xl px-3 py-2 text-white font-bold focus:ring-2 focus:ring-emerald-400 outline-none">
+        </div>
+        <div class="flex items-center justify-between pt-2">
+          <span class="text-xs text-emerald-200">초침 째깍 소리 (틱 효과음)</span>
+          <input type="checkbox" id="tickSoundCheckbox" class="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 bg-gray-900 border-gray-700">
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button id="saveSettingsBtn" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all">
+          설정 저장하기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast Box -->
+  <div id="toast" class="fixed bottom-6 bg-emerald-950/90 border border-emerald-400 text-emerald-100 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md transform translate-y-24 opacity-0 pointer-events-none z-50 flex items-center gap-3">
+    <span id="toastIcon" class="text-xl">🔔</span>
+    <span id="toastMsg" class="text-sm font-semibold">알림 메시지</span>
+  </div>
+
+  <script>
+    /* Timer State Configuration */
+    const state = {
+      mode: 'pomodoro', // 'pomodoro' | 'shortBreak' | 'longBreak'
+      durations: {
+        pomodoro: 25 * 60,
+        shortBreak: 5 * 60,
+        longBreak: 15 * 60
+      },
+      currentDuration: 25 * 60,
+      remainingTime: 25 * 60,
+      isRunning: false,
+      timerId: null,
+      completedSessions: 0,
+      theme: 'sunset',
+      soundEnabled: true,
+      tickSound: false
+    };
+
+    /* Audio Synthesizers using Tone.js */
+    let chimeSynth = null;
+    let tickSynth = null;
+
+    function initAudio() {
+      if (!chimeSynth) {
+        try {
+          // Soft bell chime for stage completion
+          chimeSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.02, decay: 1.5, sustain: 0.1, release: 1.8 }
+          }).toDestination();
+          chimeSynth.volume.value = -6;
+
+          // Gentle tick sound
+          tickSynth = new Tone.MembraneSynth({
+            pitchDecay: 0.008,
+            octaves: 2,
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 }
+          }).toDestination();
+          tickSynth.volume.value = -24;
+        } catch (e) {
+          console.warn("Tone audio initialization handled:", e);
+        }
+      }
+    }
+
+    function playChime(isBreak = false) {
+      if (!state.soundEnabled) return;
+      initAudio();
+      try {
+        Tone.start();
+        const now = Tone.now();
+        if (!isBreak) {
+          // Pomodoro finished: Celebration chord (E5, G#5, B5, E6)
+          chimeSynth.triggerAttackRelease(["E5", "G#5", "B5"], "4n", now);
+          chimeSynth.triggerAttackRelease(["E6"], "2n", now + 0.25);
+        } else {
+          // Break finished: Back to work chime
+          chimeSynth.triggerAttackRelease(["C5", "G5"], "4n", now);
+          chimeSynth.triggerAttackRelease(["C6"], "2n", now + 0.2);
+        }
+      } catch (err) {
+        console.warn(err);
+      }
+    }
+
+    function playTick() {
+      if (!state.soundEnabled || !state.tickSound) return;
+      initAudio();
+      try {
+        tickSynth.triggerAttackRelease("C6", "32n");
+      } catch (e) {}
+    }
+
+    const dialTicksGroup = document.getElementById('dialTicks');
+    const dialNumbersGroup = document.getElementById('dialNumbers');
+    const minuteHandWrapper = document.getElementById('minuteHandWrapper');
+    const dialModeBtn = document.getElementById('dialModeBtn');
+    const dialModeLabel = document.getElementById('dialModeLabel');
+    const timerWedge = document.getElementById('timerSvg').querySelector('#timerWedge');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const percentDisplay = document.getElementById('percentDisplay');
+    const modeLabel = document.getElementById('modeLabel');
+    const startBtn = document.getElementById('startBtn');
+    const startBtnText = document.getElementById('startBtnText');
+    const playIcon = document.getElementById('playIcon');
+    const pauseIcon = document.getElementById('pauseIcon');
+    const pulseRing = document.getElementById('pulseRing');
+
+    // Generate 60 dial tick marks along the 400x400 SVG circumference
+    function renderDialTicks() {
+      const cx = 200;
+      const cy = 200;
+      const rOuter = 184;
+      let ticksHtml = '';
+
+      for (let i = 0; i < 60; i++) {
+        const isMajor = i % 5 === 0;
+        const tickLength = isMajor ? 12 : 6;
+        const rInner = rOuter - tickLength;
+        const angle = (i * 6) * (Math.PI / 180);
+
+        const x1 = cx + rOuter * Math.cos(angle);
+        const y1 = cy + rOuter * Math.sin(angle);
+        const x2 = cx + rInner * Math.cos(angle);
+        const y2 = cy + rInner * Math.sin(angle);
+
+        const strokeColor = isMajor ? 'rgba(255, 255, 255, 0.85)' : 'rgba(255, 255, 255, 0.25)';
+        const strokeWidth = isMajor ? 2.5 : 1.2;
+
+        ticksHtml += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-linecap="round" />`;
+      }
+      dialTicksGroup.innerHTML = ticksHtml;
+    }
+    renderDialTicks();
+
+    // 분침 표시판의 메인 분(0~55분) 숫자 인덱스 렌더링
+    function renderDialNumbers() {
+      const cx = 200;
+      const cy = 200;
+      const rNum = 152; // 분 숫자 반지름
+      let numbersHtml = '';
+
+      for (let i = 0; i < 12; i++) {
+        const angle = (i * 30) * (Math.PI / 180);
+        const nx = cx + rNum * Math.cos(angle);
+        const ny = cy + rNum * Math.sin(angle);
+
+        // 5분 단위 메인 분 숫자 (0, 5, 10, 15, ..., 55)
+        const minuteVal = i * 5;
+
+        // 부모 SVG가 -90도 회전되어 있으므로 90도 상쇄 회전하여 글씨를 정방향으로 유지
+        numbersHtml += `
+          <g transform="rotate(90 ${nx} ${ny})">
+            <text x="${nx}" y="${ny - 1}" fill="#f8fafc" font-size="15" font-family="'Outfit', sans-serif" font-weight="900" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.9))">
+              ${minuteVal}
+            </text>
+            <text x="${nx}" y="${ny + 12}" fill="#34d399" font-size="8.5" font-family="'Outfit', sans-serif" font-weight="700" letter-spacing="0.5">
+              MIN
+            </text>
+          </g>
+        `;
+      }
+      dialNumbersGroup.innerHTML = numbersHtml;
+    }
+    renderDialNumbers();
+
+    // 분침 표시판 모드: 'timer' (타이머 잔여 분 연동) 또는 'realtime' (현재 실제 시각 분침)
+    let dialHandMode = 'timer';
+
+    function updateClockHands() {
+      if (dialHandMode === 'timer') {
+        // 타이머 모드: 60분 다이얼 기준으로 남은 분(0~60분)의 위치를 분침이 가리킴
+        const minutesLeft = state.remainingTime / 60;
+        // 60분 = 360도이므로 1분당 6도 회전
+        const minuteHandDeg = (minutesLeft / 60) * 360;
+        minuteHandWrapper.style.transform = `rotate(${minuteHandDeg}deg)`;
+      } else {
+        // 실시간 분침 모드: 현재 실제 시각의 분/초를 반영하여 회전
+        const now = new Date();
+        const minutes = now.getMinutes();
+        const seconds = now.getSeconds();
+        const minDeg = (minutes * 6) + (seconds * 0.1);
+        minuteHandWrapper.style.transform = `rotate(${minDeg}deg)`;
+      }
+    }
+
+    // 1초 주기로 실시간 분침 동기화
+    setInterval(() => {
+      if (dialHandMode === 'realtime') {
+        updateClockHands();
+      }
+    }, 1000);
+
+    function updateVisualPie(ratio) {
+      // ratio goes from 1.0 (full duration) down to 0.0 (empty)
+      const cx = 200;
+      const cy = 200;
+      const r = 184;
+
+      if (ratio <= 0) {
+        timerWedge.setAttribute('d', '');
+        return;
+      }
+
+      if (ratio >= 0.9999) {
+        // Full circle
+        timerWedge.setAttribute(
+          'd',
+          `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} Z`
+        );
+        return;
+      }
+
+      const angle = ratio * 2 * Math.PI;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      const largeArcFlag = angle > Math.PI ? 1 : 0;
+
+      // Draw pie wedge starting from angle 0 (which is top, because of SVG transform -rotate-90)
+      const pathData = [
+        `M ${cx} ${cy}`,
+        `L ${cx + r} ${cy}`,
+        `A ${r} ${r} 0 ${largeArcFlag} 1 ${x} ${y}`,
+        'Z'
+      ].join(' ');
+
+      timerWedge.setAttribute('d', pathData);
+    }
+
+    function renderTimer() {
+      const minutes = Math.floor(state.remainingTime / 60);
+      const seconds = state.remainingTime % 60;
+      const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      timeDisplay.textContent = formattedTime;
+
+      // Update Page Title
+      const modeEmoji = state.mode === 'pomodoro' ? '🍅' : '☕';
+      document.title = `(${formattedTime}) ${modeEmoji} 뽀모도로 타이머`;
+
+      const ratio = state.currentDuration > 0 ? (state.remainingTime / state.currentDuration) : 0;
+      updateVisualPie(ratio);
+
+      const percent = Math.round(ratio * 100);
+      percentDisplay.textContent = `남은 시간: ${percent}%`;
+
+      // 분침 바늘 업데이트
+      updateClockHands();
+
+      // Visual pulse
+      if (state.isRunning) {
+        pulseRing.style.opacity = '0.35';
+      } else {
+        pulseRing.style.opacity = '0';
+      }
+    }
+
+    function startTimer() {
+      if (state.isRunning) return;
+      initAudio();
+      state.isRunning = true;
+      startBtn.classList.remove('from-amber-400', 'via-rose-500', 'to-red-500');
+      startBtn.classList.add('from-emerald-500', 'to-teal-600');
+      startBtnText.textContent = '일시 정지';
+      playIcon.classList.add('hidden');
+      pauseIcon.classList.remove('hidden');
+
+      state.timerId = setInterval(() => {
+        if (state.remainingTime > 0) {
+          state.remainingTime--;
+          playTick();
+          renderTimer();
+        } else {
+          handleTimeComplete();
+        }
+      }, 1000);
+    }
+
+    function pauseTimer() {
+      if (!state.isRunning) return;
+      state.isRunning = false;
+      clearInterval(state.timerId);
+      startBtn.classList.add('from-amber-400', 'via-rose-500', 'to-red-500');
+      startBtn.classList.remove('from-emerald-500', 'to-teal-600');
+      startBtnText.textContent = state.mode === 'pomodoro' ? '계속 집중하기' : '휴식 계속';
+      playIcon.classList.remove('hidden');
+      pauseIcon.classList.add('hidden');
+      renderTimer();
+    }
+
+    function resetTimer() {
+      pauseTimer();
+      state.remainingTime = state.currentDuration;
+      startBtnText.textContent = state.mode === 'pomodoro' ? '집중 시작' : '휴식 시작';
+      renderTimer();
+      showToast('타이머가 초기화되었습니다.', '🔄');
+    }
+
+    function handleTimeComplete() {
+      pauseTimer();
+      if (state.mode === 'pomodoro') {
+        state.completedSessions++;
+        updateSessionCounter();
+        playChime(false);
+        showToast('멋져요! 25분 집중을 성공적으로 완료했습니다! 🎉', '🍅');
+        
+        // Auto recommend break
+        if (state.completedSessions % 4 === 0) {
+          switchMode('longBreak');
+        } else {
+          switchMode('shortBreak');
+        }
+      } else {
+        playChime(true);
+        showToast('휴식이 끝났습니다! 다시 힘차게 집중해볼까요?', '⚡');
+        switchMode('pomodoro');
+      }
+    }
+
+    function switchMode(newMode) {
+      pauseTimer();
+      state.mode = newMode;
+      state.currentDuration = state.durations[newMode];
+      state.remainingTime = state.currentDuration;
+
+      // Update Mode Tabs Styling
+      document.querySelectorAll('.mode-tab').forEach(tab => {
+        if (tab.dataset.mode === newMode) {
+          tab.className = 'mode-tab flex-1 py-2 px-3 rounded-xl text-sm font-bold transition-all text-white bg-emerald-600/70 shadow';
+        } else {
+          tab.className = 'mode-tab flex-1 py-2 px-3 rounded-xl text-sm font-bold transition-all text-emerald-200/70 hover:text-white';
+        }
+      });
+
+      // Update Mode Label & Button Text
+      if (newMode === 'pomodoro') {
+        modeLabel.textContent = '집중 시간';
+        modeLabel.className = 'text-xs tracking-widest uppercase font-extrabold text-amber-300 drop-shadow mb-1';
+        startBtnText.textContent = '집중 시작';
+      } else if (newMode === 'shortBreak') {
+        modeLabel.textContent = '짧은 휴식';
+        modeLabel.className = 'text-xs tracking-widest uppercase font-extrabold text-cyan-300 drop-shadow mb-1';
+        startBtnText.textContent = '휴식 시작';
+      } else {
+        modeLabel.textContent = '긴 휴식';
+        modeLabel.className = 'text-xs tracking-widest uppercase font-extrabold text-teal-300 drop-shadow mb-1';
+        startBtnText.textContent = '휴식 시작';
+      }
+
+      renderTimer();
+    }
+
+    /* Update Tomato Session Icons */
+    function updateSessionCounter() {
+      document.getElementById('completedCountText').textContent = state.completedSessions;
+      document.getElementById('sessionStreakText').textContent = `오늘 연속 집중 ${state.completedSessions}회 완료!`;
+
+      const setOfFour = state.completedSessions % 4;
+      let icons = '';
+      for (let i = 0; i < 4; i++) {
+        icons += (i < setOfFour) ? '🍅' : '⚪';
+      }
+      document.getElementById('tomatoIcons').textContent = icons;
+    }
+
+    const themes = {
+      sunset: { gradId: 'url(#grad-sunset)', glowClass: 'glow-effect' },
+      aurora: { gradId: 'url(#grad-aurora)', glowClass: 'glow-aurora' },
+      cyber: { gradId: 'url(#grad-cyber)', glowClass: 'glow-cyber' },
+      emerald: { gradId: 'url(#grad-emerald)', glowClass: 'glow-emerald' }
+    };
+
+    function applyTheme(themeKey) {
+      if (!themes[themeKey]) return;
+      state.theme = themeKey;
+      timerWedge.setAttribute('fill', themes[themeKey].gradId);
+      
+      // Remove previous glow classes
+      timerWedge.classList.remove('glow-effect', 'glow-aurora', 'glow-cyber', 'glow-emerald');
+      timerWedge.classList.add(themes[themeKey].glowClass);
+
+      // Theme button highlight
+      document.querySelectorAll('.theme-btn').forEach(btn => {
+        if (btn.dataset.theme === themeKey) {
+          btn.classList.add('ring-2', 'ring-white', 'ring-offset-2', 'scale-110');
+        } else {
+          btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2', 'scale-110');
+        }
+      });
+    }
+
+    let toastTimeout = null;
+    function showToast(message, icon = '🔔') {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMsg').textContent = message;
+      document.getElementById('toastIcon').textContent = icon;
+      
+      toast.classList.remove('translate-y-24', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-24', 'opacity-0');
+      }, 3500);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      renderTimer();
+
+      // Main Button Toggle
+      startBtn.addEventListener('click', () => {
+        if (state.isRunning) {
+          pauseTimer();
+        } else {
+          startTimer();
+        }
+      });
+
+      // Reset
+      document.getElementById('resetBtn').addEventListener('click', resetTimer);
+
+      // Skip current phase
+      document.getElementById('skipBtn').addEventListener('click', () => {
+        if (state.mode === 'pomodoro') {
+          switchMode('shortBreak');
+          showToast('휴식 모드로 건너뛰었습니다.', '⏩');
+        } else {
+          switchMode('pomodoro');
+          showToast('집중 모드로 건너뛰었습니다.', '🍅');
+        }
+      });
+
+      // Mode tabs click
+      document.querySelectorAll('.mode-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          switchMode(tab.dataset.mode);
+        });
+      });
+
+      // 분침 표시판 모드 토글 (타이머 남은 분 <-> 실제 시각 분침)
+      dialModeBtn.addEventListener('click', () => {
+        if (dialHandMode === 'timer') {
+          dialHandMode = 'realtime';
+          dialModeLabel.textContent = '분침: 현재 분';
+          showToast('분침이 현재 시각의 분을 표시합니다. ⏱️', '⏰');
+        } else {
+          dialHandMode = 'timer';
+          dialModeLabel.textContent = '분침: 타이머';
+          showToast('분침이 타이머 잔여 분을 가리킵니다. ⏳', '🎯');
+        }
+        updateClockHands();
+      });
+
+      // Quick minute additions
+      document.getElementById('add1MinBtn').addEventListener('click', () => {
+        state.remainingTime += 60;
+        state.currentDuration += 60;
+        renderTimer();
+        showToast('1분이 추가되었습니다.', '⏱️');
+      });
+
+      document.getElementById('add5MinBtn').addEventListener('click', () => {
+        state.remainingTime += 300;
+        state.currentDuration += 300;
+        renderTimer();
+        showToast('5분이 추가되었습니다.', '⏱️');
+      });
+
+      document.getElementById('sub5MinBtn').addEventListener('click', () => {
+        if (state.remainingTime > 300) {
+          state.remainingTime -= 300;
+          state.currentDuration = Math.max(state.remainingTime, state.currentDuration - 300);
+          renderTimer();
+          showToast('5분이 단축되었습니다.', '⏱️');
+        } else {
+          showToast('남은 시간이 5분 이하입니다.', '⚠️');
+        }
+      });
+
+      // Themes
+      document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          applyTheme(btn.dataset.theme);
+        });
+      });
+
+      // Sound Toggle
+      const soundBtn = document.getElementById('soundToggleBtn');
+      const soundIconOn = document.getElementById('soundIconOn');
+      const soundIconOff = document.getElementById('soundIconOff');
+
+      soundBtn.addEventListener('click', () => {
+        state.soundEnabled = !state.soundEnabled;
+        if (state.soundEnabled) {
+          soundIconOn.classList.remove('hidden');
+          soundIconOff.classList.add('hidden');
+          showToast('소리가 활성화되었습니다.', '🔊');
+          initAudio();
+        } else {
+          soundIconOn.classList.add('hidden');
+          soundIconOff.classList.remove('hidden');
+          showToast('소리가 음소거되었습니다.', '🔇');
+        }
+      });
+
+      // Settings Modal
+      const modal = document.getElementById('settingsModal');
+      const settingsBtn = document.getElementById('settingsBtn');
+      const closeModalBtn = document.getElementById('closeModalBtn');
+      const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+      const inputPomo = document.getElementById('inputPomodoro');
+      const inputShort = document.getElementById('inputShortBreak');
+      const inputLong = document.getElementById('inputLongBreak');
+      const tickSoundCheckbox = document.getElementById('tickSoundCheckbox');
+
+      function openModal() {
+        inputPomo.value = Math.round(state.durations.pomodoro / 60);
+        inputShort.value = Math.round(state.durations.shortBreak / 60);
+        inputLong.value = Math.round(state.durations.longBreak / 60);
+        tickSoundCheckbox.checked = state.tickSound;
+
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+          modal.classList.remove('opacity-0');
+          modal.children[0].classList.remove('scale-95');
+        }, 10);
+      }
+
+      function closeModal() {
+        modal.classList.add('opacity-0');
+        modal.children[0].classList.add('scale-95');
+        setTimeout(() => modal.classList.add('hidden'), 300);
+      }
+
+      settingsBtn.addEventListener('click', openModal);
+      closeModalBtn.addEventListener('click', closeModal);
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+
+      saveSettingsBtn.addEventListener('click', () => {
+        const pVal = Math.max(1, parseInt(inputPomo.value) || 25);
+        const sVal = Math.max(1, parseInt(inputShort.value) || 5);
+        const lVal = Math.max(1, parseInt(inputLong.value) || 15);
+
+        state.durations.pomodoro = pVal * 60;
+        state.durations.shortBreak = sVal * 60;
+        state.durations.longBreak = lVal * 60;
+        state.tickSound = tickSoundCheckbox.checked;
+
+        state.currentDuration = state.durations[state.mode];
+        state.remainingTime = state.currentDuration;
+        pauseTimer();
+        renderTimer();
+        closeModal();
+        showToast('새로운 타이머 설정이 적용되었습니다.', '✅');
+      });
+    });
+  </script>
+</body>
+</html>
